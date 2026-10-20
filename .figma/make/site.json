@@ -1,0 +1,10 @@
+{
+  "description": "Secure end-to-end encrypted chat supporting private and group conversations with real-time status, offline handling, and a clean, responsive interface in Brazilian Portuguese.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
