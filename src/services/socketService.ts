@@ -60,12 +60,12 @@ export const socketService = {
     messageCallbacks.add(callback)
     return () => messageCallbacks.delete(callback)
   },
-  onPresence(callback: Callback<{ userId: string online: boolean }>) {
+  onPresence(callback: Callback<{ userId: string; online: boolean }>) {
     presenceCallbacks.add(callback)
     return () => presenceCallbacks.delete(callback)
   },
   onKeyUpdate(
-    callback: Callback<{ conversationId: string keyVersion: number }>,
+    callback: Callback<{ conversationId: string; keyVersion: number }>,
   ) {
     keyCallbacks.add(callback)
     return () => keyCallbacks.delete(callback)

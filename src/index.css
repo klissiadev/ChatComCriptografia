@@ -212,3 +212,39 @@
   .dev-trigger { right: 1rem; bottom: 1rem; }
   .dev-panel { right: .75rem; bottom: .75rem; }
 }
+
+.messages {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.message-row {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.message-bubble {
+  min-width: 0;
+  max-width: min(75%, 32rem);
+}
+
+.message-text {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.search-field > svg {
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.search-field input {
+  width: 100%;
+  padding-left: 2.75rem;
+  background: var(--panel);
+}

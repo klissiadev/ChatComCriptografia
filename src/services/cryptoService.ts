@@ -4,7 +4,7 @@ const wait = () =>
   new Promise((resolve) => setTimeout(resolve, 200 + Math.random() * 600))
 
 export const cryptoService = {
-  async generateKeyPair(): Promise<{ publicKey: string privateKey: string }> {
+  async generateKeyPair(): Promise<{ publicKey: string; privateKey: string }> {
     await wait()
     return {
       publicKey: `public_${crypto.randomUUID()}`,

@@ -91,9 +91,9 @@ export function MessageBubble({
     message.verification === "tampered" ||
     message.verification === "waiting_key"
   return (
-    <div className={`message-row ${mine ? "message-row-mine" : ""}`}>
+    <div className={`message-row min-w-0 ${mine ? "message-row-mine" : ""}`}>
       <div
-        className={`message-bubble ${mine ? "message-mine" : "message-other"} ${
+        className={`message-bubble min-w-0 max-w-full ${mine ? "message-mine" : "message-other"} ${
           message.verification !== "ok" ? "message-unverified" : ""
         }`}
       >
@@ -102,7 +102,11 @@ export function MessageBubble({
             {sender?.username ?? "Participante"}
           </div>
         )}
-        {!concealed && <p className="message-text">{message.text}</p>}
+        {!concealed && (
+          <p className="message-text whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+            {message.text}
+          </p>
+        )}
         <div className="message-meta">
           <SecurityBadge verification={message.verification} />
           <span>{time}</span>

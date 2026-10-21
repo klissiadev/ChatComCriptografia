@@ -61,15 +61,26 @@ export function ChatProvider({
   const queuedRef = useRef(new Map<string, DecryptedMessage>())
 
   useEffect(() => {
-    void Promise.all([
-      apiService.listUsers(),
-      apiService.listConversations(),
-    ]).then(([allUsers, allConversations]) => {
-      setUsers(allUsers)
-      setConversations(allConversations)
-      setSelectedId(allConversations[0]?.id ?? null)
-    })
-    return socketService.onConnectionChange(setConnectionState)
+    let active = true
+
+    Promise.all([apiService.listUsers(), apiService.listConversations()])
+      .then(([allUsers, allConversations]) => {
+        if (!active) return
+        setUsers(allUsers)
+        setConversations(allConversations)
+        setSelectedId(allConversations[0]?.id ?? null)
+      })
+      .catch((error) => {
+        console.error('Falha ao carregar dados iniciais', error)
+        // aqui dá para setar um estado de erro e mostrar o botão "Tentar novamente"
+      })
+
+    const unsubscribe = socketService.onConnectionChange(setConnectionState)
+
+    return () => {
+      active = false
+      unsubscribe()
+    }
   }, [])
 
   const reloadHistory = useCallback(async () => {

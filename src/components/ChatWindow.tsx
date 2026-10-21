@@ -28,10 +28,9 @@ export function ChatWindow({
     (participant) => participant.userId !== currentUser.id,
   )
 
-  useEffect(
-    () => endRef.current?.scrollIntoView({ behavior: "smooth" }),
-    [messages, selectedId],
-  )
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages, selectedId])
   if (!conversation) {
     return (
       <main className="empty-chat">
