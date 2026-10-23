@@ -36,6 +36,7 @@ type ChatContextValue = {
   removeMember: (conversationId: string, userId: string) => Promise<void>
   leaveConversation: (conversationId: string) => Promise<void>
   refreshConversations: () => Promise<Conversation[]>
+  refreshUsers: () => Promise<void>
   setConnection: (state: ConnectionState) => void
   simulateFailedSend: () => void
 }
@@ -87,18 +88,18 @@ export function ChatProvider({
   )
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [historyError, setHistoryError] = useState<string | null>(null)
-
   const queuedRef = useRef(new Map<string, DecryptedMessage>())
   const loadedRef = useRef(new Set<string>()) // conversas cujo histórico já foi carregado
   const conversationsRef = useRef<Conversation[]>([])
+  const usersRef = useRef<User[]>([])
   const messagesRef = useRef<Record<string, DecryptedMessage[]>>({})
   const selectedRef = useRef<string | null>(null)
-
   useEffect(() => {
+    usersRef.current = users
     conversationsRef.current = conversations
     messagesRef.current = messages
     selectedRef.current = selectedId
-  }, [conversations, messages, selectedId])
+  }, [conversations, messages, selectedId, users])
 
   // ---------- helpers de estado ----------
 
@@ -123,7 +124,6 @@ export function ChatProvider({
     },
     [],
   )
-
   const touchConversation = useCallback((message: DecryptedMessage, incoming: boolean) => {
     setConversations((current) =>
       current.map((conversation) =>
@@ -154,8 +154,21 @@ export function ChatProvider({
   }, [])
 
   /** Recarrega do servidor mantendo o que só existe no cliente (prévia e não lidas). */
+
+  const refreshUsers = useCallback(async () => {
+    try {
+      setUsers(await apiService.listUsers())
+    } catch (error) {
+      console.error("Falha ao atualizar usuários", error)
+    }
+  }, [])
+  const hasUnknown = (ids: string[]) =>
+    ids.some((id) => !usersRef.current.some((user) => user.id === id))
   const refreshConversations = useCallback(async () => {
     const fresh = await apiService.listConversations()
+    if (hasUnknown(fresh.flatMap((c) => c.participants.map((p) => p.userId)))) {
+     void refreshUsers()
+    }
     const previous = conversationsRef.current
     setConversations(
       fresh.map((conversation) => {
@@ -189,15 +202,12 @@ export function ChatProvider({
     }
     setSelectedId((current) => (current && !fresh.some((item) => item.id === current) ? null : current))
     return fresh
-  }, [])
-
+  }, [refreshUsers])
   // ---------- carga inicial, socket e eventos ----------
-
+  
   useEffect(() => {
     let active = true
-
     void socketService.connect().catch((error) => console.error("Falha ao conectar o socket", error))
-
     Promise.all([apiService.listUsers(), apiService.listConversations()])
       .then(([allUsers, allConversations]) => {
         if (!active) return
@@ -206,17 +216,15 @@ export function ChatProvider({
         setSelectedId((current) => current ?? allConversations[0]?.id ?? null)
       })
       .catch((error) => console.error("Falha ao carregar dados iniciais", error))
-
     const unsubscribers = [
       socketService.onConnectionChange(setConnectionState),
-
       // Handler async: se lançar erro (ex.: rede), a mensagem NÃO é confirmada e o servidor reenvia.
       socketService.onMessage(async (message) => {
         const decrypted = await apiService.decryptMessage(message)
+        if (hasUnknown([message.senderId])) void refreshUsers()
         upsertMessage(decrypted)
         touchConversation(decrypted, true)
       }),
-
       socketService.onMessageStatus(({ messageId, status }) => {
         setMessages((current) => {
           const next: typeof current = {}
@@ -228,7 +236,6 @@ export function ChatProvider({
           return next
         })
       }),
-
       // Chave nova importada e confirmada: destrava mensagens em waiting_key e atualiza keyPending.
       socketService.onKeyUpdate(async ({ conversationId }) => {
         void refreshConversations().catch(console.error)
@@ -243,14 +250,12 @@ export function ChatProvider({
           }
         }
       }),
-
       socketService.onConversationUpdated(() => {
         void refreshConversations().catch(console.error)
       }),
-
       socketService.onConversationRemoved(({ conversationId }) => dropConversation(conversationId)),
-
       socketService.onPresence(({ userId, online }) => {
+        if (hasUnknown([userId])) void refreshUsers()
         setConversations((current) =>
           current.map((conversation) => ({
             ...conversation,
@@ -266,7 +271,7 @@ export function ChatProvider({
       active = false
       unsubscribers.forEach((unsubscribe) => unsubscribe())
     }
-  }, [dropConversation, refreshConversations, touchConversation, upsertMessage])
+  }, [dropConversation, refreshConversations, refreshUsers, touchConversation, upsertMessage])
 
   // ---------- histórico ----------
 
@@ -301,13 +306,13 @@ export function ChatProvider({
 
   // ---------- envio ----------
 
-  /** Envia; trata STALE_KEY (recifra com a versão atual) e fila offline. Sempre reutiliza o mesmo id. */
+  /* Envia; trata STALE_KEY (recifra com a versão atual) e fila offline. Sempre reutiliza o mesmo id. */
+
   const deliver = useCallback(
     async (initial: DecryptedMessage) => {
       let message = initial
       for (let attempt = 0; attempt < 3; attempt++) {
         const ack = await socketService.sendMessage(message)
-
         if (ack.status !== "failed") {
           queuedRef.current.delete(message.id)
           patchMessage(message.conversationId, message.id, {
@@ -317,7 +322,6 @@ export function ChatProvider({
           })
           return
         }
-
         if (ack.code === "STALE_KEY") {
           try {
             const fresh = await apiService.resyncKeys(message.conversationId)
@@ -344,7 +348,6 @@ export function ChatProvider({
             break
           }
         }
-
         if (
           (ack.code === "OFFLINE" || ack.code === "TIMEOUT") &&
           socketService.getConnection() !== "connected"
@@ -369,14 +372,15 @@ export function ChatProvider({
       void deliver(message)
     })
     void refreshConversations().catch(console.error)
-  }, [connection, deliver, patchMessage, refreshConversations])
-
+    void refreshUsers()
+  }, [connection, deliver, patchMessage, refreshConversations, refreshUsers])
+  
   const sendMessage = useCallback(
     async (text: string) => {
       const clean = text.trim()
       const conversation = conversationsRef.current.find((item) => item.id === selectedId)
+      
       if (!selectedId || !conversation || !clean || conversation.keyPending) return
-
       const id = crypto.randomUUID()
       const skeleton: DecryptedMessage = {
         id,
@@ -394,7 +398,6 @@ export function ChatProvider({
       }
       upsertMessage(skeleton)
       touchConversation(skeleton, false)
-
       let ready: DecryptedMessage
       try {
         const sealed = await cryptoService.encryptMessage(
@@ -411,7 +414,6 @@ export function ChatProvider({
         return
       }
       patchMessage(selectedId, id, ready)
-
       if (socketService.getConnection() !== "connected") {
         queuedRef.current.set(id, ready)
         return
@@ -485,7 +487,6 @@ export function ChatProvider({
     },
     [refreshConversations],
   )
-
   const removeMember = useCallback(
     async (conversationId: string, userId: string) => {
       await apiService.removeMember(conversationId, userId)
@@ -493,7 +494,6 @@ export function ChatProvider({
     },
     [refreshConversations],
   )
-
   const leaveConversation = useCallback(
     async (conversationId: string) => {
       await apiService.leaveConversation(conversationId)
@@ -501,13 +501,11 @@ export function ChatProvider({
     },
     [dropConversation],
   )
-
   const setConnection = useCallback(
     (state: ConnectionState) => socketService.setConnection(state),
     [],
   )
   const simulateFailedSend = useCallback(() => socketService.failNextSend(), [])
-
   const value = useMemo(
     () => ({
       currentUser,
@@ -527,7 +525,8 @@ export function ChatProvider({
       removeMember,
       leaveConversation,
       refreshConversations,
-      setConnection,
+      refreshUsers,
+        setConnection,
       simulateFailedSend,
     }),
     [
@@ -541,7 +540,8 @@ export function ChatProvider({
       loadingHistory,
       messages,
       refreshConversations,
-      reloadHistory,
+      refreshUsers,
+        reloadHistory,
       removeMember,
       retryMessage,
       selectConversation,
@@ -552,10 +552,8 @@ export function ChatProvider({
       users,
     ],
   )
-
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
 }
-
 export function useChat() {
   const context = useContext(ChatContext)
   if (!context) throw new Error("useChat deve ser usado dentro de ChatProvider")
