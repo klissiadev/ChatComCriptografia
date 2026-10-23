@@ -48,7 +48,19 @@ export type DecryptedMessage = Message & {
 
 export type ConnectionState = "connected" | "reconnecting" | "offline"
 
+export type SendFailureCode =
+  | "NOT_MEMBER"
+  | "STALE_KEY" // refaça o resync das chaves e recife com a versão atual
+  | "INVALID"
+  | "INTERNAL"
+  | "OFFLINE" // sem socket: reenviar ao reconectar, com o MESMO id
+  | "TIMEOUT" // sem ACK: reenviar com o MESMO id (o servidor deduplica)
+
 export type SendAck = {
   id: string
   status: "sent" | "delivered" | "failed"
+  code?: SendFailureCode
+  currentKeyVersion?: number
+  seq?: number
+  serverTimestamp?: string
 }

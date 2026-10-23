@@ -69,6 +69,12 @@ export default function App() {
     void authService.getCurrentUser().then(setCurrentUser)
   }, [])
 
+  useEffect(() => {
+    const expired = () => setCurrentUser(null)
+    window.addEventListener("cifra:unauthorized", expired)
+    return () => window.removeEventListener("cifra:unauthorized", expired)
+  }, [])
+
   if (currentUser === undefined) {
     return (
       <div className="splash">

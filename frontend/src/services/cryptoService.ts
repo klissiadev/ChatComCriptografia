@@ -101,6 +101,18 @@ async function importSigningKey(serialized: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("jwk", jwk, { name: "RSA-PSS", hash: "SHA-256" }, true, ["verify"])
 }
 
+async function remove(store: string, id: string): Promise<void> {
+  const db = await database()
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(store, "readwrite")
+    tx.objectStore(store).delete(id)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error ?? new Error("Não foi possível remover a chave local"))
+    tx.onabort = () => reject(tx.error ?? new Error("Remoção da chave local cancelada"))
+  })
+  db.close()
+}
+
 export const cryptoService = {
   /** Gera RSA-OAEP para troca de chaves e RSA-PSS para assinatura. Privadas ficam no IndexedDB. */
   async generateKeyPair(userId?: string): Promise<{ publicKey: string }> {
@@ -184,7 +196,7 @@ export const cryptoService = {
     return this.distributeKey(conversationId, nextVersion, members)
   },
 
-  async encryptMessage(text: string, conversationId: string, keyVersion = 1, senderId = "default", messageId = crypto.randomUUID()) {
+  async encryptMessage(text: string, conversationId: string, keyVersion = 1, senderId = "default", messageId: string = crypto.randomUUID()) {
     const key = await loadSessionKey(conversationId, keyVersion)
     const iv = crypto.getRandomValues(new Uint8Array(12))
     const aad = encoder.encode(`${conversationId}:${keyVersion}`)
@@ -223,6 +235,15 @@ export const cryptoService = {
     const digest = await crypto.subtle.digest("SHA-256", encoder.encode(publicKey))
     return Array.from(new Uint8Array(digest)).slice(0, 16).map((byte) => byte.toString(16).padStart(2, "0").toUpperCase()).join("").match(/.{1,4}/g)!.join(" ")
   },
+
+  async hasSessionKey(conversationId: string, version: number): Promise<boolean> {
+    return !!(await get<SessionKey>(SESSION_STORE, sessionId(conversationId, version)))
+  },  
+
+  async discardSessionKey(conversationId: string, version: number): Promise<void> {
+    await remove(SESSION_STORE, sessionId(conversationId, version))
+  },
+
 }
 
 export function asDecrypted(message: Message, text: string): DecryptedMessage {

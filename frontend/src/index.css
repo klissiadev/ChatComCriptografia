@@ -248,3 +248,18 @@
   padding-left: 2.75rem;
   background: var(--panel);
 }
+
+.app-grid {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.chat-window,
+.sidebar,
+.info-panel {
+  min-height: 0;
+}
+
+.info-scroll {
+  min-height: 0;
+  flex: 1;
+}

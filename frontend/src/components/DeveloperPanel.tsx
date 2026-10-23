@@ -4,21 +4,8 @@ import { Button, IconButton } from "./ui"
 import { Icon } from "./Icon"
 
 export function DeveloperPanel() {
-  const {
-    connection,
-    setConnection,
-    simulateIncoming,
-    simulatePresence,
-    simulateRemoval,
-    simulateFailedSend,
-  } = useChat()
+  const { connection, setConnection, simulateFailedSend } = useChat()
   const [open, setOpen] = useState(false)
-  const nextConnection =
-    connection === "connected"
-      ? "reconnecting"
-      : connection === "reconnecting"
-        ? "offline"
-        : "connected"
   if (!open) {
     return (
       <IconButton
@@ -38,7 +25,7 @@ export function DeveloperPanel() {
             Painel de demonstração
           </div>
           <div className="text-xs text-secondary">
-            Simule eventos em tempo real
+            Ações reais sobre a conexão com o servidor
           </div>
         </div>
         <IconButton label="Fechar painel" onClick={() => setOpen(false)}>
@@ -47,24 +34,15 @@ export function DeveloperPanel() {
       </div>
       <div className="mt-3 grid gap-2">
         <Button
-          onClick={() => setConnection(nextConnection)}
+          onClick={() =>
+            setConnection(connection === "offline" ? "connected" : "offline")
+          }
           variant="secondary"
         >
-          <Icon name="cloud-off" />{" "}
-          {connection === "connected"
-            ? "Cair conexão"
-            : connection === "reconnecting"
-              ? "Ficar sem conexão"
-              : "Restaurar conexão"}
-        </Button>
-        <Button onClick={simulateIncoming} variant="secondary">
-          Receber mensagem
-        </Button>
-        <Button onClick={simulatePresence} variant="secondary">
-          Alternar contato offline
-        </Button>
-        <Button onClick={simulateRemoval} variant="secondary">
-          Remover membro + nova chave
+          <Icon name="cloud-off" />
+          <span>
+            {connection === "offline" ? "Restaurar conexão" : "Derrubar conexão"}
+          </span>
         </Button>
         <Button onClick={simulateFailedSend} variant="secondary">
           Falhar próximo envio

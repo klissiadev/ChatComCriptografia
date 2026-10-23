@@ -16,39 +16,52 @@ export function AuthScreen({
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [error, setError] = useState<string | null>(null)
   const [registeredUser, setRegisteredUser] = useState<User | null>(null)
 
+  // A barra só acompanha o tempo real da geração das chaves (RSA 3072 leva alguns segundos).
   useEffect(() => {
     if (mode !== "generating") return
     const timer = window.setInterval(
-      () =>
-        setProgress((value) => Math.min(value + 7 + Math.random() * 12, 94)),
-      260,
+      () => setProgress((value) => Math.min(value + 3 + Math.random() * 5, 94)),
+      400,
     )
-    const completion = window.setTimeout(() => {
-      window.clearInterval(timer)
-      setProgress(100)
-      window.setTimeout(() => setMode("complete"), 400)
-    }, 1200)
-    return () => {
-      window.clearInterval(timer)
-      window.clearTimeout(completion)
-    }
+    return () => window.clearInterval(timer)
   }, [mode])
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!username.trim() || !password) return
-    setLoading(true)
+    setError(null)
+
     if (mode === "register") {
-      const user = await authService.register(username.trim(), password)
-      setRegisteredUser(user)
+      setProgress(0)
       setMode("generating")
-    } else {
-      const user = await authService.login(username.trim(), password)
-      onAuthenticated(user)
+      try {
+        const user = await authService.register(username.trim(), password)
+        setRegisteredUser(user)
+        setProgress(100)
+        window.setTimeout(() => setMode("complete"), 400)
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Não foi possível criar a conta")
+        setMode("register")
+      }
+      return
     }
-    setLoading(false)
+
+    setLoading(true)
+    try {
+      onAuthenticated(await authService.login(username.trim(), password))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível entrar")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function switchMode() {
+    setError(null)
+    setMode(mode === "login" ? "register" : "login")
   }
 
   return (
@@ -122,9 +135,14 @@ export function AuthScreen({
                   autoComplete="username"
                   id="username"
                   onChange={(event) => setUsername(event.target.value)}
-                  placeholder="Seu nome"
+                  placeholder="ana.martins"
                   value={username}
                 />
+                {mode === "register" && (
+                  <p className="mt-1 text-xs text-secondary">
+                    3 a 32 caracteres: letras, números, _ . - (sem espaços).
+                  </p>
+                )}
               </div>
               <div>
                 <label className="field-label" htmlFor="password">
@@ -136,11 +154,17 @@ export function AuthScreen({
                   }
                   id="password"
                   onChange={(event) => setPassword(event.target.value)}
-                  placeholder="••••••••"
+                  placeholder={mode === "login" ? "••••••••" : "Mínimo de 8 caracteres"}
                   type="password"
                   value={password}
                 />
               </div>
+              {error && (
+                <div className="warning-card" role="alert">
+                  <Icon name="alert" />
+                  <span>{error}</span>
+                </div>
+              )}
               <Button
                 className="w-full"
                 disabled={!username.trim() || !password || loading}
@@ -162,9 +186,7 @@ export function AuthScreen({
               {mode === "login"
                 ? "Ainda não tem uma conta?"
                 : "Já possui uma conta?"}
-              <button
-                onClick={() => setMode(mode === "login" ? "register" : "login")}
-              >
+              <button onClick={switchMode} type="button">
                 {mode === "login" ? "Cadastre-se" : "Entrar"}
               </button>
             </div>
