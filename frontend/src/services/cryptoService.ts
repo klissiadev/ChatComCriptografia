@@ -58,16 +58,16 @@ function toBase64(bytes: ArrayBuffer | Uint8Array): string {
   return btoa(binary)
 }
 
-function fromBase64(value: string): Uint8Array {
+function fromBase64(value: string): ArrayBuffer {
   const binary = atob(value)
-  return Uint8Array.from(binary, (char) => char.charCodeAt(0))
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0)).buffer
 }
 
 function identityId(userId?: string): string { return userId ?? "default" }
 function sessionId(conversationId: string, version: number): string { return `${conversationId}:${version}` }
 
 async function loadIdentity(userId?: string): Promise<Identity> {
-  const identity = await get<Identity>(IDENTITY_STORE, identityId(userId)) ?? (userId ? await get<Identity>(IDENTITY_STORE, "default") : undefined)
+  const identity = await get<Identity>(IDENTITY_STORE, identityId(userId))
   if (!identity) throw new Error("Chave privada não encontrada neste dispositivo. Entre ou gere suas chaves novamente.")
   return identity
 }
@@ -78,7 +78,7 @@ async function loadSessionKey(conversationId: string, version: number): Promise<
   return session.key
 }
 
-function canonicalMessage(message: Pick<Message, "id" | "conversationId" | "senderId" | "keyVersion" | "iv" | "ciphertext">): Uint8Array {
+function canonicalMessage(message: Pick<Message, "id" | "conversationId" | "senderId" | "keyVersion" | "iv" | "ciphertext">) {
   return encoder.encode(JSON.stringify({
     id: message.id,
     conversationId: message.conversationId,
@@ -120,6 +120,12 @@ export const cryptoService = {
     return { publicKey: JSON.stringify(publicData) }
   },
 
+  async bindIdentity(localId: string, serverUserId: string): Promise<void> {
+    const identity = await loadIdentity(localId)
+    if (await get<Identity>(IDENTITY_STORE, serverUserId)) throw new Error("Identidade já existe")
+    await put(IDENTITY_STORE, { ...identity, id: serverUserId })
+  },
+
   async getPublicKey(userId?: string): Promise<string> {
     const identity = await get<Identity>(IDENTITY_STORE, identityId(userId))
     if (!identity) return ""
@@ -137,21 +143,25 @@ export const cryptoService = {
 
   /** Criptografa a chave AES individualmente para cada membro e retorna os IDs dos destinatários. */
   async distributeKey(conversationId: string, version: number, members: KeyRecipient[]): Promise<DistributedKey[]> {
-    if (members.length < 2) throw new Error("A conversa precisa ter pelo menos dois participantes")
-    await this.createSessionKey(conversationId, version)
-    const key = await loadSessionKey(conversationId, version)
+    if (members.length < 1 || new Set(members.map(m => m.userId)).size !== members.length) throw new Error("Destinatários vazios ou duplicados")
+    if (!Number.isInteger(version) || version < 1) throw new Error("Versão inválida")
+    if (await get<SessionKey>(SESSION_STORE, sessionId(conversationId, version))) throw new Error("Versão de chave já existe; use uma nova versão")
+    const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"])
     const raw = await crypto.subtle.exportKey("raw", key)
-    return Promise.all(members.map(async ({ userId, publicKey }) => {
+    const distributed = await Promise.all(members.map(async ({ userId, publicKey }) => {
       const parsed = JSON.parse(publicKey) as { version?: number; exchange?: JsonWebKey }
       if (!parsed.exchange) throw new Error(`Chave de criptografia ausente para ${userId}`)
       const recipientKey = await importPublicKey(JSON.stringify(parsed.exchange))
       const encrypted = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, recipientKey, raw)
       return { userId, encryptedKey: toBase64(encrypted), keyVersion: version }
     }))
+    await put<SessionKey>(SESSION_STORE, { id: sessionId(conversationId, version), conversationId, version, key })
+    return distributed
   },
 
   async encryptSessionKey(keyRef: string, publicKeys: string[]): Promise<string[]> {
-    const [conversationId, rawVersion] = keyRef.includes(":") ? keyRef.split(":") : ["default", "1"]
+    const separator = keyRef.lastIndexOf(":")
+    const [conversationId, rawVersion] = separator >= 0 ? [keyRef.slice(0, separator), keyRef.slice(separator + 1)] : ["default", "1"]
     const key = await loadSessionKey(conversationId, Number(rawVersion))
     const raw = await crypto.subtle.exportKey("raw", key)
     return Promise.all(publicKeys.map(async (publicKey) => {

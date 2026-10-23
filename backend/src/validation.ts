@@ -27,3 +27,23 @@ export function assertRsaSpki(publicKeyB64: string): void {
     throw new HttpError(400, 'INVALID_PUBLIC_KEY', 'publicKey must be a base64 SPKI RSA key of at least 2048 bits');
   }
 }
+
+/** Identidade pública com pares distintos para troca e assinatura. */
+export function assertPublicIdentity(serialized: string): void {
+  if (!serialized.startsWith('{')) return assertRsaSpki(serialized);
+  try {
+    const identity = JSON.parse(serialized);
+    if (identity.version !== 1) throw new Error();
+    for (const [field, algorithm] of [['exchange', 'RSA-OAEP-256'], ['signing', 'PS256']]) {
+      const jwk = identity[field];
+      if (!jwk || jwk.kty !== 'RSA' || !jwk.n || !jwk.e ||
+          ['d', 'p', 'q', 'dp', 'dq', 'qi', 'oth'].some((f) => f in jwk) ||
+          (jwk.alg && jwk.alg !== algorithm)) throw new Error();
+      const key = createPublicKey({ key: jwk, format: 'jwk' });
+      if ((key.asymmetricKeyDetails?.modulusLength ?? 0) < 2048) throw new Error();
+    }
+    if (identity.exchange.n === identity.signing.n) throw new Error();
+  } catch {
+    throw new HttpError(400, 'INVALID_PUBLIC_KEY', 'Expected public RSA-OAEP/RSA-PSS identity version 1');
+  }
+}

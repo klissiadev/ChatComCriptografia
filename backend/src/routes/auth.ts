@@ -6,13 +6,13 @@ import { signToken } from '../auth';
 import type { Config } from '../config';
 import type { DB } from '../db';
 import { HttpError } from '../errors';
-import { assertRsaSpki, b64 } from '../validation';
+import { assertPublicIdentity } from '../validation';
 import type { AuthResponse } from '../../../shared/types';
 
 const registerSchema = z.object({
   username: z.string().regex(/^[a-zA-Z0-9_.-]{3,32}$/),
   password: z.string().min(8).max(128),
-  publicKey: b64(2000),
+  publicKey: z.string().min(1).max(8000),
 });
 const loginSchema = z.object({ username: z.string().min(1).max(32), password: z.string().min(1).max(128) });
 
@@ -30,7 +30,7 @@ export function authRoutes(db: DB, cfg: Pick<Config, 'jwtSecret' | 'jwtTtlSecond
 
   r.post('/register', async (req, res) => {
     const b = registerSchema.parse(req.body);
-    assertRsaSpki(b.publicKey);
+    assertPublicIdentity(b.publicKey);
     const user: UserRow = { id: randomUUID(), username: b.username, password_hash: await bcrypt.hash(b.password, 10), public_key: b.publicKey };
     try {
       db.prepare('INSERT INTO users (id, username, password_hash, public_key) VALUES (?,?,?,?)')

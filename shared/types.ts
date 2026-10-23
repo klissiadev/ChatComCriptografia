@@ -5,7 +5,7 @@ export type ConversationType = 'direct' | 'group';
 export type MemberRole = 'admin' | 'member';
 
 // ---------- REST ----------
-export interface RegisterBody { username: string; password: string; publicKey: string } // SPKI (RSA) em base64
+export interface RegisterBody { username: string; password: string; publicKey: string } // JSON v1: {version:1, exchange:JWK público RSA-OAEP, signing:JWK público RSA-PSS}; SPKI legado aceito
 export interface LoginBody { username: string; password: string }
 export interface AuthResponse {
   token: string;
