@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react"
 import { authService } from "../services/authService"
-import { cryptoService } from "../services/cryptoService"
 import type { User } from "../services/types"
 import { Icon } from "./Icon"
 import { Button, Input } from "./ui"
@@ -26,12 +25,15 @@ export function AuthScreen({
         setProgress((value) => Math.min(value + 7 + Math.random() * 12, 94)),
       260,
     )
-    void cryptoService.generateKeyPair().then(() => {
+    const completion = window.setTimeout(() => {
       window.clearInterval(timer)
       setProgress(100)
       window.setTimeout(() => setMode("complete"), 400)
-    })
-    return () => window.clearInterval(timer)
+    }, 1200)
+    return () => {
+      window.clearInterval(timer)
+      window.clearTimeout(completion)
+    }
   }, [mode])
 
   async function submit(event: React.FormEvent) {

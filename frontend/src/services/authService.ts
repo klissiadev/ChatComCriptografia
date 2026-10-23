@@ -1,4 +1,5 @@
 import { users } from "./mockData"
+import { cryptoService } from "./cryptoService"
 import type { User } from "./types"
 
 const wait = () =>
@@ -8,10 +9,12 @@ let currentUser: User | null = users[0]
 export const authService = {
   async register(username: string, _password: string): Promise<User> {
     await wait()
+    const id = crypto.randomUUID()
+    const { publicKey } = await cryptoService.generateKeyPair(id)
     currentUser = {
-      id: crypto.randomUUID(),
+      id,
       username,
-      publicKey: `pk_${crypto.randomUUID()}`,
+      publicKey,
     }
     return currentUser
   },
